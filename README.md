@@ -1,11 +1,11 @@
 ----
-# Welcome to Nxt! #
+# Welcome to Burst! #
 
 ----
-## What is Nxt? ##
-Nxt is a modern economic system based on cryptography and blockchain technology.
+## What is Burst? ##
+Burst is a modern economic system based on cryptography and blockchain technology.
 
-With Nxt, you can manage and interact with
+With Burst, you can manage and interact with
 
  - your **assets**
  - your **businesses**
@@ -16,20 +16,17 @@ in such a way that no trusted third parties are required anymore.
 ----
 ## Get it! ##
 
-  - *pre-packaged* - `https://bitbucket.org/JeanLucPicard/nxt/downloads/nxt-client-{version}.zip`
-
   - *dependencies*:
     - *general* - Java 8
     - *Ubuntu* - `http://www.webupd8.org/2012/09/install-oracle-java-8-in-ubuntu-via-ppa.html`
     - *Debian* - `http://www.webupd8.org/2014/03/how-to-install-oracle-java-8-in-debian.html`
     - *FreeBSD* - `pkg install openjdk8`
 
-  - *repository* - `git clone https://bitbucket.org/JeanLucPicard/nxt.git`
+  - *repository* - `git clone https://github.com/BurstNation/Burst-Core-Wallet.git`
   
 ----
 ## Run it! ##
 
-  - click on the Nxt icon, or start from the command line:
   - Unix: `./start.sh`
   - Mac: `./run.command`
   - Window: `run.bat`
@@ -40,7 +37,7 @@ in such a way that no trusted third parties are required anymore.
 ----
 ## Compile it! ##
 
-  - if necessary with: `./compile.sh`
+  - if necessary with: `./win-compile.bat`
   - you need jdk-8 as well
 
 ----
@@ -48,7 +45,7 @@ in such a way that no trusted third parties are required anymore.
 
   - we love **pull requests**
   - we love issues (resolved ones actually ;-) )
-  - in any case, make sure you leave **your ideas** at BitBucket
+  - in any case, make sure you leave **your ideas** at GitHub
   - assist others on the issue tracker
   - **review** existing code and pull requests
   - cf. coding guidelines in DEVELOPERS-GUIDE.md
@@ -76,10 +73,10 @@ in such a way that no trusted third parties are required anymore.
     - OPERATORS-GUIDE.md
 
   - in the wiki:
-    - nxtwiki.org
+    - https://en.wikipedia.org/wiki/Burstcoin
 
   - on the forums:
-    - nxtforum.org
+    - burstnation.com
     
 ----
 

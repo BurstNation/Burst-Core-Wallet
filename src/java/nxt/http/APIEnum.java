@@ -281,7 +281,8 @@ public enum APIEnum {
     BLACKLIST_API_PROXY_PEER("blacklistAPIProxyPeer", BlacklistAPIProxyPeer.instance),
     GET_NEXT_BLOCK_GENERATORS("getNextBlockGenerators", GetNextBlockGeneratorsTemp.instance),
     GET_MINING_INFO("getMiningInfo", GetMiningInfo.instance),
-    SUBMIT_NONCE("submitNonce", SubmitNonce.instance)
+    SUBMIT_NONCE("submitNonce", SubmitNonce.instance),
+    GET_REWARD_RECIPIENT("getRewardRecipient", GetRewardRecipient.instance)
     ;
 
     private static final Map<String, APIEnum> apiByName = new HashMap<>();
