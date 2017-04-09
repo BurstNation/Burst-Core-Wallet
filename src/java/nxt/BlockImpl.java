@@ -66,6 +66,44 @@ final class BlockImpl implements Block {
     private final byte[] blockATs;
     private Peer downloadedFrom = null;
 
+    // copied old block implt.. seems like some issue with new nxt code. (ant.)
+    BlockImpl(int version, int timestamp, long previousBlockId, long totalAmountNQT, long totalFeeNQT, int payloadLength, byte[] payloadHash,
+            byte[] generatorPublicKey, byte[] generationSignature, byte[] blockSignature, byte[] previousBlockHash, List<TransactionImpl> transactions, long nonce, byte[] blockATs)
+          throws NxtException.ValidationException {
+
+      if (payloadLength > Constants.MAX_PAYLOAD_LENGTH || payloadLength < 0) {
+          throw new NxtException.NotValidException("attempted to create a block with payloadLength " + payloadLength);
+      }
+
+      this.version = version;
+      this.timestamp = timestamp;
+      this.previousBlockId = previousBlockId;
+      this.totalAmountNQT = totalAmountNQT;
+      this.totalFeeNQT = totalFeeNQT;
+      this.payloadLength = payloadLength;
+      this.payloadHash = payloadHash;
+      this.generatorPublicKey = generatorPublicKey;
+      this.generationSignature = generationSignature;
+      this.blockSignature = blockSignature;
+
+      this.previousBlockHash = previousBlockHash;
+      if (transactions != null) {
+          this.blockTransactions = Collections.unmodifiableList(transactions);
+          if (blockTransactions.size() > Constants.MAX_NUMBER_OF_TRANSACTIONS) {
+              throw new NxtException.NotValidException("attempted to create a block with " + blockTransactions.size() + " transactions");
+          }
+          long previousId = 0;
+          for (Transaction transaction : this.blockTransactions) {
+              if (transaction.getId() <= previousId && previousId != 0) {
+                  throw new NxtException.NotValidException("Block transactions are not sorted!");
+              }
+              previousId = transaction.getId();
+          }
+      }
+      this.nonce = nonce;
+      this.blockATs = blockATs;
+  }
+    
     BlockImpl(int version, int timestamp, long previousBlockId, long totalAmountNQT, long totalFeeNQT, int payloadLength, byte[] payloadHash,
               byte[] generatorPublicKey, byte[] generationSignature, byte[] previousBlockHash, List<TransactionImpl> transactions, String secretPhrase, Long nonce, byte[] blockATs) {
         this(version, timestamp, previousBlockId, totalAmountNQT, totalFeeNQT, payloadLength, payloadHash,
