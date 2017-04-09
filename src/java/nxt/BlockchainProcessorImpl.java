@@ -1043,67 +1043,84 @@ final class BlockchainProcessorImpl implements BlockchainProcessor {
         }
     };
 
-    private BlockchainProcessorImpl() {
-        final int trimFrequency = Nxt.getIntProperty("nxt.trimFrequency");
-        blockListeners.addListener(block -> {
-            if (block.getHeight() % 5000 == 0) {
-                Logger.logMessage("processed block " + block.getHeight());
-            }
-            if (trimDerivedTables && block.getHeight() % trimFrequency == 0) {
-                doTrimDerivedTables();
+    private BlockchainProcessorImpl()
+    {
+
+        blockListeners.addListener(new Listener<Block>()
+        {
+            @Override
+            public void notify(Block block)
+            {
+                if (block.getHeight() % 5000 == 0)
+                {
+                    Logger.logMessage("processed block " + block.getHeight());
+                }
             }
         }, Event.BLOCK_SCANNED);
 
-        blockListeners.addListener(block -> {
-            if (trimDerivedTables && block.getHeight() % trimFrequency == 0 && !isTrimming) {
-                isTrimming = true;
-                networkService.submit(() -> {
-                    trimDerivedTables();
-                    isTrimming = false;
-                });
-            }
-            if (block.getHeight() % 5000 == 0) {
-                Logger.logMessage("received block " + block.getHeight());
-                if (!isDownloading || block.getHeight() % 50000 == 0) {
-                    networkService.submit(Db.db::analyzeTables);
+        blockListeners.addListener(new Listener<Block>()
+        {
+            @Override
+            public void notify(Block block)
+            {
+                if (block.getHeight() % 5000 == 0)
+                {
+                    Logger.logMessage("processed block " + block.getHeight());
+                    //Db.analyzeTables(); //TODO put this back (ant)
                 }
             }
         }, Event.BLOCK_PUSHED);
 
-        blockListeners.addListener(checksumListener, Event.BLOCK_PUSHED);
-
-        blockListeners.addListener(block -> Db.db.analyzeTables(), Event.RESCAN_END);
-
-        ThreadPool.runBeforeStart(() -> {
-            alreadyInitialized = true;
-            if (addGenesisBlock()) {
-                scan(0, false);
-            } else if (Nxt.getBooleanProperty("nxt.forceScan")) {
-                scan(0, Nxt.getBooleanProperty("nxt.forceValidate"));
-            } else {
-                boolean rescan;
-                boolean validate;
-                int height;
-                try (Connection con = Db.db.getConnection();
-                     Statement stmt = con.createStatement();
-                     ResultSet rs = stmt.executeQuery("SELECT * FROM scan")) {
-                    rs.next();
-                    rescan = rs.getBoolean("rescan");
-                    validate = rs.getBoolean("validate");
-                    height = rs.getInt("height");
-                } catch (SQLException e) {
-                    throw new RuntimeException(e.toString(), e);
+        if (trimDerivedTables)
+        {
+            blockListeners.addListener(new Listener<Block>()
+            {
+                @Override
+                public void notify(Block block)
+                {
+                    if (block.getHeight() % 1440 == 0)
+                    {
+                        lastTrimHeight = Math.max(block.getHeight() - Constants.MAX_ROLLBACK, 0);
+                        if (lastTrimHeight > 0)
+                        {
+                            for (DerivedDbTable table : derivedTables)
+                            {
+                                table.trim(lastTrimHeight);
+                            }
+                        }
+                    }
                 }
-                if (rescan) {
-                    scan(height, validate);
+            }, Event.AFTER_BLOCK_APPLY);
+        }
+
+        blockListeners.addListener(new Listener<Block>()
+        {
+            @Override
+            public void notify(Block block)
+            {
+                //Db.analyzeTables(); // TODO put this back (ant.)
+            }
+        }, Event.RESCAN_END);
+
+        ThreadPool.runBeforeStart(new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                addGenesisBlock();
+                /*// TODO put this back (ant.)
+                if (forceScan)
+                {
+                    scan(0, false);
                 }
+                */
             }
         }, false);
 
-        if (!Constants.isLightClient && !Constants.isOffline) {
-            ThreadPool.scheduleThread("GetMoreBlocks", getMoreBlocksThread, 1);
-        }
-
+        ThreadPool.scheduleThread("GetMoreBlocks", getMoreBlocksThread, 2);
+        //ThreadPool.scheduleThread("ImportBlocks", blockImporterThread, 10); // TODO put this back (ant.)
+        //ThreadPool.scheduleThreadCores("VerifyPoc", pocVerificationThread, 9); // TODO put this back (ant.)
+        // ThreadPool.scheduleThread("Info", debugInfoThread, 5);
     }
 
     // blockCache for faster sync
@@ -1239,25 +1256,18 @@ final class BlockchainProcessorImpl implements BlockchainProcessor {
     }
 
     @Override
-    public void fullReset() {
-        blockchain.writeLock();
-        try {
-            try {
-                setGetMoreBlocks(false);
-                scheduleScan(0, false);
-                //BlockDb.deleteBlock(Genesis.GENESIS_BLOCK_ID); // fails with stack overflow in H2
-                BlockDb.deleteAll();
-                if (addGenesisBlock()) {
-                    scan(0, false);
-                }
-            } finally {
-                setGetMoreBlocks(true);
-            }
-        } finally {
-            blockchain.writeUnlock();
+    public void fullReset()
+    {
+        synchronized (blockchain)
+        {
+            // BlockDb.deleteBlock(Genesis.GENESIS_BLOCK_ID); // fails with
+            // stack overflow in H2
+            BlockDb.deleteAll();
+            addGenesisBlock();
+            scan(0, false);
         }
     }
-
+    
     @Override
     public void setGetMoreBlocks(boolean getMoreBlocks) {
         this.getMoreBlocks = getMoreBlocks;
@@ -1369,70 +1379,36 @@ final class BlockchainProcessorImpl implements BlockchainProcessor {
         }
     }
 
-    private boolean addGenesisBlock() {
-        if (BlockDb.hasBlock(Genesis.GENESIS_BLOCK_ID, 0)) {
+    private void addGenesisBlock()
+    {
+        if (BlockDb.hasBlock(Genesis.GENESIS_BLOCK_ID))
+        {
             Logger.logMessage("Genesis block already in database");
             BlockImpl lastBlock = BlockDb.findLastBlock();
             blockchain.setLastBlock(lastBlock);
-            popOffTo(lastBlock);
             Logger.logMessage("Last block height: " + lastBlock.getHeight());
-            return false;
+            return;
         }
         Logger.logMessage("Genesis block not in database, starting from scratch");
-        try {
+        try
+        {
             List<TransactionImpl> transactions = new ArrayList<>();
-            for (int i = 0; i < Genesis.GENESIS_RECIPIENTS.length; i++) {
-                Logger.logInfoMessage("Adding Genesis Recipient:" + Genesis.GENESIS_RECIPIENTS[i]);
-                TransactionImpl transaction = new TransactionImpl.BuilderImpl((byte) 0, Genesis.CREATOR_PUBLIC_KEY,
-                        Genesis.GENESIS_AMOUNTS[i] * Constants.ONE_NXT, 0, (short) 0,
-                        Attachment.ORDINARY_PAYMENT)
-                        .timestamp(0)
-                        .recipientId(Genesis.GENESIS_RECIPIENTS[i])
-                        .signature(Genesis.GENESIS_SIGNATURES[i])
-                        .height(0)
-                        .ecBlockHeight(0)
-                        .ecBlockId(0)
-                        .build();
-                transactions.add(transaction);
-            }
-            Logger.logInfoMessage("Done processing Transactions for Genesis Recipients - In Burst it should be None!");
-            Collections.sort(transactions, Comparator.comparingLong(Transaction::getId));
             MessageDigest digest = Crypto.sha256();
-            for (TransactionImpl transaction : transactions) {
-                digest.update(transaction.bytes());
+            for (Transaction transaction : transactions)
+            {
+                digest.update(transaction.getBytes());
             }
-            Logger.logInfoMessage("Done updating digest for Genesis Creation");
-            // ToDo: Clean this up after the DB has been verified
-            //BlockImpl genesisBlock = new BlockImpl(-1, 0, 0, Constants.MAX_BALANCE_NQT, 0, transactions.size() * 128, digest.digest(),
-            //        Genesis.CREATOR_PUBLIC_KEY, new byte[64], Genesis.GENESIS_BLOCK_SIGNATURE, null, transactions, 0L, null); // nonce 0 and no ATs
-
-            ByteBuffer bf = ByteBuffer.allocate( 0 );
-            bf.order( ByteOrder.LITTLE_ENDIAN );
+            ByteBuffer bf = ByteBuffer.allocate(0);
+            bf.order(ByteOrder.LITTLE_ENDIAN);
             byte[] byteATs = bf.array();
-
-/*
             BlockImpl genesisBlock = new BlockImpl(-1, 0, 0, 0, 0, transactions.size() * 128, digest.digest(),
-                    Genesis.CREATOR_PUBLIC_KEY, new byte[32], Genesis.GENESIS_BLOCK_SIGNATURE, null, transactions, 0L, byteATs);
-*/
-
-            /*BlockImpl(int version, int timestamp, long previousBlockId, long totalAmountNQT, long totalFeeNQT, int payloadLength,
-            byte[] payloadHash, long generatorId, byte[] generationSignature, byte[] blockSignature,
-            byte[] previousBlockHash, BigInteger cumulativeDifficulty, long baseTarget, long nextBlockId, int height, long id,
-            List<TransactionImpl> blockTransactions, Long nonce, byte[] blockATs)        */
-            BlockImpl genesisBlock = new BlockImpl(-1, 0, 0, 0, 0, 0,
-                                                   // version   timestamp    previousblock    AmountNQT         totalFee      //payload length
-                    digest.digest(), 8628161281313630310L, new byte[32], Genesis.GENESIS_BLOCK_SIGNATURE,
-                //  payloadhash      generatorID                 gen sig       block Sig
-                    null, BigInteger.ZERO, 0,0L, 0, 1,
-                //  previosuhash         diff                baseTarget, nextBlockID     height   id
-                    transactions, 0L, new byte[0]);
-                // transactions        nonce       bytesAT
-            //byteATs
-            Logger.logInfoMessage("Ready to addBlock(genesisBlock)");
+                    Genesis.CREATOR_PUBLIC_KEY, new byte[32], Genesis.GENESIS_BLOCK_SIGNATURE, null, transactions, 0,
+                    byteATs);
+            genesisBlock.setPrevious(null);
             addBlock(genesisBlock);
-            Logger.logInfoMessage("Genesis Block added successfully");
-            return true;
-        } catch (NxtException.ValidationException e) {
+        }
+        catch (NxtException.ValidationException e)
+        {
             Logger.logMessage(e.getMessage());
             throw new RuntimeException(e.toString(), e);
         }
