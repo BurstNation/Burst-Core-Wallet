@@ -372,7 +372,7 @@ public final class Nxt {
                 ShufflingParticipant.init();
                 PrunableMessage.init();
                 TaggedData.init();
-                FxtDistribution.init();
+                //FxtDistribution.init();
                 Peers.init();
                 APIProxy.init();
                 Generator.init();
